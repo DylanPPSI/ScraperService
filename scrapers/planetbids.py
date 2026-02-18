@@ -1,43 +1,32 @@
-import asyncio
-from playwright.async_api import async_playwright
+# scrapers/planetbids.py
 import os
+import asyncio
+import httpx
 
+# Load environment variables
 AUTH_TOKEN = os.getenv("PLANETBIDS_AUTH_TOKEN")
 VENDOR_ID = os.getenv("PLANETBIDS_VENDOR_ID")
 VENDOR_LOGIN_ID = os.getenv("PLANETBIDS_VENDOR_LOGIN_ID")
 VISIT_ID = os.getenv("PLANETBIDS_VISIT_ID")
 
+if not all([AUTH_TOKEN, VENDOR_ID, VENDOR_LOGIN_ID, VISIT_ID]):
+    raise RuntimeError("Missing PLANETBIDS env variables")
+
+BASE_URL = "https://api.planetbids.com/papi"
 
 async def run_scraper(company_id: str, name: str):
-
     results = []
+    headers = {
+        "accept": "application/vnd.api+json",
+        "authorization": AUTH_TOKEN,
+        "company-id": company_id,
+        "vendor-id": VENDOR_ID,
+        "vendor-login-id": VENDOR_LOGIN_ID,
+        "visit-id": VISIT_ID,
+    }
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context()
-        page = await context.new_page()
-
-        await page.goto(
-            f"https://vendors.planetbids.com/portal/{company_id}/bo/bo-search"
-        )
-
-        cookies = await context.cookies()
-        cookie_header = "; ".join(
-            [f"{c['name']}={c['value']}" for c in cookies]
-        )
-
-        headers = {
-            "accept": "application/vnd.api+json",
-            "authorization": AUTH_TOKEN,
-            "company-id": company_id,
-            "vendor-id": VENDOR_ID,
-            "vendor-login-id": VENDOR_LOGIN_ID,
-            "visit-id": VISIT_ID,
-            "cookie": cookie_header,
-        }
-
+    async with httpx.AsyncClient(timeout=30) as client:
         page_number = 1
-
         while True:
             params = {
                 "cid": company_id,
@@ -46,27 +35,25 @@ async def run_scraper(company_id: str, name: str):
                 "stage_id": 4,
             }
 
-            response = await page.request.get(
-                "https://api.planetbids.com/papi/bids",
-                headers=headers,
-                params=params
-            )
-
-            if response.status != 200:
+            try:
+                response = await client.get(f"{BASE_URL}/bids", headers=headers, params=params)
+                response.raise_for_status()
+            except httpx.HTTPError:
                 break
 
-            data = await response.json()
+            data = response.json()
             bids = data.get("data", [])
-
             if not bids:
                 break
 
-            for bid in bids:
-                bid_id = bid["attributes"]["bidId"]
-                details = await fetch_details(
-                    page, company_id, bid_id, headers
-                )
+            # Fetch all bid details in parallel
+            tasks = [
+                fetch_details(client, company_id, bid["attributes"]["bidId"])
+                for bid in bids
+            ]
+            details_list = await asyncio.gather(*tasks)
 
+            for bid, details in zip(bids, details_list):
                 results.append({
                     "organization": name,
                     "title": bid["attributes"].get("title"),
@@ -78,19 +65,24 @@ async def run_scraper(company_id: str, name: str):
 
             page_number += 1
 
-        await browser.close()
-
+    # Here you can save results to DB, S3, etc.
+    print(f"Scraping complete for {name}, total bids: {len(results)}")
     return results
 
 
-async def fetch_details(page, company_id, bid_id, headers):
-
-    url = f"https://api.planetbids.com/papi/bid-details/{bid_id}"
-
-    response = await page.request.get(url, headers=headers)
-
-    if response.status != 200:
-        return None
-
-    data = await response.json()
-    return data.get("data", {}).get("attributes", {})
+async def fetch_details(client: httpx.AsyncClient, company_id: str, bid_id: str):
+    url = f"{BASE_URL}/bid-details/{bid_id}"
+    try:
+        resp = await client.get(url, headers={
+            "accept": "application/vnd.api+json",
+            "authorization": AUTH_TOKEN,
+            "company-id": company_id,
+            "vendor-id": VENDOR_ID,
+            "vendor-login-id": VENDOR_LOGIN_ID,
+            "visit-id": VISIT_ID,
+        })
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("data", {}).get("attributes", {})
+    except httpx.HTTPError:
+        return {}
