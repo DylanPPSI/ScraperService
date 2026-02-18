@@ -1,6 +1,6 @@
 import asyncio
 from supabase import create_client
-from plantbids import run_scraper
+from planetbids import run_scraper
 from bidnet import run_scraper as run_bidnet
 import os
 
