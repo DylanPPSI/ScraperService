@@ -1,4 +1,5 @@
 playwright
 supabase
 python-dotenv
-os
+fastapi
+pydantic
