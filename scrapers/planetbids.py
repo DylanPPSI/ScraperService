@@ -3,18 +3,18 @@ import os
 import asyncio
 import httpx
 
-# Load environment variables
-AUTH_TOKEN = os.getenv("PLANETBIDS_AUTH_TOKEN")
-VENDOR_ID = os.getenv("PLANETBIDS_VENDOR_ID")
-VENDOR_LOGIN_ID = os.getenv("PLANETBIDS_VENDOR_LOGIN_ID")
-VISIT_ID = os.getenv("PLANETBIDS_VISIT_ID")
-
-if not all([AUTH_TOKEN, VENDOR_ID, VENDOR_LOGIN_ID, VISIT_ID]):
-    raise RuntimeError("Missing PLANETBIDS env variables")
-
 BASE_URL = "https://api.planetbids.com/papi"
 
 async def run_scraper(company_id: str, name: str):
+    # Load env variables here (lazy)
+    AUTH_TOKEN = os.getenv("PLANETBIDS_AUTH_TOKEN")
+    VENDOR_ID = os.getenv("PLANETBIDS_VENDOR_ID")
+    VENDOR_LOGIN_ID = os.getenv("PLANETBIDS_VENDOR_LOGIN_ID")
+    VISIT_ID = os.getenv("PLANETBIDS_VISIT_ID")
+
+    if not all([AUTH_TOKEN, VENDOR_ID, VENDOR_LOGIN_ID, VISIT_ID]):
+        raise RuntimeError("Missing PLANETBIDS env variables")
+
     results = []
     headers = {
         "accept": "application/vnd.api+json",
@@ -46,9 +46,8 @@ async def run_scraper(company_id: str, name: str):
             if not bids:
                 break
 
-            # Fetch all bid details in parallel
             tasks = [
-                fetch_details(client, company_id, bid["attributes"]["bidId"])
+                fetch_details(client, company_id, bid["attributes"]["bidId"], AUTH_TOKEN, VENDOR_ID, VENDOR_LOGIN_ID, VISIT_ID)
                 for bid in bids
             ]
             details_list = await asyncio.gather(*tasks)
@@ -65,12 +64,11 @@ async def run_scraper(company_id: str, name: str):
 
             page_number += 1
 
-    # Here you can save results to DB, S3, etc.
     print(f"Scraping complete for {name}, total bids: {len(results)}")
     return results
 
 
-async def fetch_details(client: httpx.AsyncClient, company_id: str, bid_id: str):
+async def fetch_details(client, company_id, bid_id, AUTH_TOKEN, VENDOR_ID, VENDOR_LOGIN_ID, VISIT_ID):
     url = f"{BASE_URL}/bid-details/{bid_id}"
     try:
         resp = await client.get(url, headers={
