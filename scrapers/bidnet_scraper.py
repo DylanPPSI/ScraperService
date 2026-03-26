@@ -31,7 +31,7 @@ PAGE_DELAY_SEC     = 1.0
 
 BIDNET_USER = os.getenv("BIDNET_USER", "")
 BIDNET_PASS = os.getenv("BIDNET_PASS", "")
-HEADLESS    = False
+HEADLESS    = True
 
 OUTPUT_DIR = "bidnet_data"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
