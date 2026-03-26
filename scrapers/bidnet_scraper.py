@@ -10,10 +10,12 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Tuple
 import time
+from dotenv import load_dotenv
 
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright, TimeoutError as PWTimeoutError
 
+load_dotenv()
 
 # ─────────────────────────────────────────────
 # Config
@@ -27,8 +29,8 @@ MATCH_THRESHOLD    = 0.20
 DETAIL_CONCURRENCY = 4
 PAGE_DELAY_SEC     = 1.0
 
-BIDNET_USER = "bids@pipeandplant.com"
-BIDNET_PASS = "Pipe$123"
+BIDNET_USER = os.getenv("BIDNET_USER", "")
+BIDNET_PASS = os.getenv("BIDNET_PASS", "")
 HEADLESS    = False
 
 OUTPUT_DIR = "bidnet_data"
